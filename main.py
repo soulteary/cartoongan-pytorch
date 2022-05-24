@@ -16,7 +16,7 @@ parser.add_argument("--load_size", default=1280)
 parser.add_argument("--model_path", default="./pretrained_model")
 parser.add_argument("--style", default="Shinkai")
 parser.add_argument("--output_dir", default="test_output")
-parser.add_argument("--gpu", type=int, default=0)
+parser.add_argument("--gpu", type=bool, default=False)
 
 opt = parser.parse_args()
 
@@ -28,21 +28,30 @@ if not os.path.exists(opt.input_dir):
 if not os.path.exists(opt.output_dir):
     os.makedirs(opt.output_dir)
 
+
+enable_gpu = torch.cuda.is_available()
+
+if enable_gpu:
+    if opt.gpu:
+        device = torch.device("cuda")
+else:
+    device = "cpu"
+
+
 # load pretrained model
 model = Transformer()
 model.load_state_dict(
-    torch.load(os.path.join(opt.model_path, opt.style + "_net_G_float.pth"))
+    torch.load(os.path.join(opt.model_path, opt.style + "_net_G_float.pth"), device)
 )
-model.eval()
 
-disable_gpu = opt.gpu == -1 or not torch.cuda.is_available()
-
-if disable_gpu:
-    print("CPU mode")
-    model.float()
-else:
+if enable_gpu:
     print("GPU mode")
-    model.cuda()
+    model = model.to(device)
+else:
+    print("CPU mode")
+    model = model.float()
+
+model.eval()
 
 for files in os.listdir(opt.input_dir):
     ext = os.path.splitext(files)[1]
@@ -56,10 +65,11 @@ for files in os.listdir(opt.input_dir):
     input_image = transforms.ToTensor()(input_image).unsqueeze(0)
     # preprocess, (-1, 1)
     input_image = -1 + 2 * input_image
-    if disable_gpu:
-        input_image = Variable(input_image).float()
+
+    if enable_gpu:
+        input_image = Variable(input_image).to(device)
     else:
-        input_image = Variable(input_image).cuda()
+        input_image = Variable(input_image).float()
 
     # forward
     output_image = model(input_image)
